@@ -56,12 +56,20 @@ def inject_css() -> None:
           border-right:1px solid var(--border);
         }
 
-        /* === ボタン: 楕円ピル形 (白+細枠, ホバーで濃いグレー枠) === */
+        /* === ボタン: 楕円ピル形 + 縦横サイズ統一 (全幅・最小高さ・中央寄せ) === */
         .stButton > button, [data-testid="stDownloadButton"] > button {
           background:#fff; color:var(--text);
           border:1px solid var(--border); border-radius:var(--radius-pill);
-          font-size:12.5px; font-weight:500; box-shadow:none; padding:6px 14px;
+          font-size:12.5px; font-weight:500; box-shadow:none; padding:7px 14px;
           transition:background .12s, border-color .12s;
+          width:100%; min-height:40px;
+          display:inline-flex; align-items:center; justify-content:center; gap:7px;
+          white-space:nowrap;
+        }
+        /* ボタン内のアイコンサイズを揃える */
+        .stButton > button [data-testid="stIconMaterial"],
+        [data-testid="stDownloadButton"] > button [data-testid="stIconMaterial"] {
+          font-size:16px; line-height:1;
         }
         .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
           background:var(--muted); border-color:#a1a1aa; color:#09090b;
@@ -140,6 +148,14 @@ PRESETS = {
     "クオリティ（優良）": {"roe_min": 15.0},
     "モメンタム":        {"ma200_min": 5.0, "ma50_min": 0.0},
 }
+# プリセットのアイコン（Material Symbols = モノトーン線画）
+PRESET_ICONS = {
+    "バリュー（割安）":   ":material/sell:",          # 値札
+    "高配当":            ":material/payments:",       # 配当
+    "グロース（成長）":   ":material/trending_up:",    # 右肩上がり
+    "クオリティ（優良）": ":material/verified:",       # 認証マーク
+    "モメンタム":        ":material/bolt:",           # 勢い
+}
 
 # session_state 初期化
 for key in OFF:
@@ -154,27 +170,27 @@ def apply_preset(cfg: dict):
 
 
 # ---------------- サイドバー ----------------
-st.sidebar.title("📊 株スクリーナー")
+st.sidebar.title(":material/candlestick_chart: 株スクリーナー")
 st.sidebar.caption(f"データ更新: {fetched:%Y-%m-%d %H:%M} JST")
 
-st.sidebar.subheader("スタイル別プリセット")
-pcols = st.sidebar.columns(2)
-for i, (name, cfg) in enumerate(PRESETS.items()):
-    if pcols[i % 2].button(name, width="stretch"):
+st.sidebar.subheader(":material/style: スタイル別プリセット")
+# 1列・全幅でボタンの縦横サイズを統一
+for name, cfg in PRESETS.items():
+    if st.sidebar.button(name, icon=PRESET_ICONS[name], width="stretch"):
         apply_preset(cfg)
-if st.sidebar.button("条件をリセット", width="stretch"):
+if st.sidebar.button("条件をリセット", icon=":material/refresh:", width="stretch"):
     apply_preset({})
 
 st.sidebar.divider()
 
 # 市場
-market = st.sidebar.radio("市場", ["両方", "日本株", "米国株"], horizontal=True)
+market = st.sidebar.radio(":material/public: 市場", ["両方", "日本株", "米国株"], horizontal=True)
 
 # セクター
 sectors = sorted(df["sector"].dropna().unique())
-sel_sectors = st.sidebar.multiselect("セクター（空＝全部）", sectors, default=[])
+sel_sectors = st.sidebar.multiselect(":material/category: セクター（空＝全部）", sectors, default=[])
 
-st.sidebar.subheader("詳細条件")
+st.sidebar.subheader(":material/tune: 詳細条件")
 for key, label, lo, hi, step, kind, col in SLIDERS:
     st.sidebar.slider(label, lo, hi, step=step, key=key)
 
@@ -203,12 +219,12 @@ for key, label, lo, hi, step, kind, col in SLIDERS:
 res = df[mask].copy()
 
 # ---------------- メイン表示 ----------------
-st.title("日本株・米国株 スクリーニング")
+st.title(":material/query_stats: 日本株・米国株 スクリーニング")
 
 m1, m2, m3 = st.columns(3)
-m1.metric("該当銘柄", f"{len(res)} 件")
-m2.metric("日本株", int((res['market'] == 'JP').sum()))
-m3.metric("米国株", int((res['market'] == 'US').sum()))
+m1.metric(":material/filter_alt: 該当銘柄", f"{len(res)} 件")
+m2.metric(":material/currency_yen: 日本株", int((res['market'] == 'JP').sum()))
+m3.metric(":material/attach_money: 米国株", int((res['market'] == 'US').sum()))
 
 if active_filters:
     st.caption("適用中の数値条件: " + " / ".join(active_filters))
@@ -227,7 +243,7 @@ DISPLAY = {
 view = res[list(DISPLAY)].rename(columns=DISPLAY)
 
 # 並べ替え用デフォルト
-sort_col = st.selectbox("並べ替え", list(DISPLAY.values()), index=list(DISPLAY.values()).index("配当%"))
+sort_col = st.selectbox(":material/sort: 並べ替え", list(DISPLAY.values()), index=list(DISPLAY.values()).index("配当%"))
 ascending = st.toggle("昇順", value=False)
 view = view.sort_values(sort_col, ascending=ascending, na_position="last")
 
@@ -257,4 +273,5 @@ st.download_button(
     view.to_csv(index=False).encode("utf-8-sig"),
     file_name="screen_result.csv",
     mime="text/csv",
+    icon=":material/download:",
 )
