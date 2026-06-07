@@ -1,6 +1,12 @@
+# kintai-css（BICEPSモノトーン業務SaaS デザインシステム）をStreamlitテーマに翻訳
 [theme]
 base = "light"
-primaryColor = "#1f6feb"
+primaryColor = "#18181b"            # zinc-900: 主役は黒
+backgroundColor = "#ffffff"         # ピュアホワイト
+secondaryBackgroundColor = "#fafafa" # zinc-50: サイドバー/ホバー背景
+textColor = "#0f172a"               # slate-900
+linkColor = "#2563eb"               # blue-600: 情報シグナルのみ
+borderColor = "#e4e4e7"             # zinc-200: ヘアライン
 font = "sans serif"
 
 [server]
