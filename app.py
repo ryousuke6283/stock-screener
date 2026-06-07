@@ -193,6 +193,19 @@ inject_css()
 
 
 # ---------------- データ読み込み ----------------
+@st.cache_data(ttl=60 * 60)
+def usdjpy_rate() -> float:
+    """USD/JPY（1ドル=何円）。時価総額をUSDに揃えて日米を比較可能にするため。"""
+    import yfinance as yf
+    try:
+        r = yf.Ticker("JPY=X").fast_info["last_price"]
+        if r and r > 50:
+            return float(r)
+    except Exception:
+        pass
+    return 155.0  # 取得失敗時のフォールバック
+
+
 @st.cache_data(ttl=60 * 30)
 def load_data() -> pd.DataFrame:
     df = pd.read_parquet(DATA)
@@ -202,6 +215,9 @@ def load_data() -> pd.DataFrame:
     df["rev_growth_pct"] = df["revenue_growth"] * 100
     df["earn_growth_pct"] = df["earnings_growth"] * 100
     df["sector_jp"] = df["sector"].map(SECTOR_JP).fillna(df["sector"])
+    # 時価総額をUSDに統一（日本株は円→ドル換算）して日米を同じ土俵で比較
+    rate = usdjpy_rate()
+    df["market_cap_usd"] = df["market_cap"].where(df["market"].eq("US"), df["market_cap"] / rate)
     return df
 
 
@@ -277,7 +293,8 @@ def render_detail(row: pd.Series) -> None:
     # メインから移した指標
     g = st.columns(4)
     g[0].metric("株価", f"{fmt(row['price'], 1)} {cur}")
-    g[1].metric("時価総額", compact(row["market_cap"]))
+    g[1].metric("時価総額", f"${compact(row['market_cap_usd'])}",
+                help=f"現地通貨: {compact(row['market_cap'])} {cur}")
     g[2].metric("PER", fmt(row["per"], 1))
     g[3].metric("PBR", fmt(row["pbr"], 2))
     g = st.columns(4)
@@ -434,7 +451,7 @@ res = res.assign(
 
 # 並べ替え（表示していない指標でもソート可能） — 下端揃えで行をきれいに
 SORT_COLS = {
-    "時価総額": "market_cap", "株価": "price", "PER": "per", "PBR": "pbr",
+    "時価総額": "market_cap_usd", "株価": "price", "PER": "per", "PBR": "pbr",
     "配当%": "dividend_yield", "ROE%": "roe_pct", "増収%": "rev_growth_pct",
     "200日線乖離%": "pct_vs_ma200",
 }
@@ -447,10 +464,10 @@ res = res.sort_values(SORT_COLS[sort_label], ascending=ascending, na_position="l
 
 # メイン表示はコンパクトに（銘柄・市場・セクター・株価・時価総額のみ）
 MAIN_COLS = {"_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
-             "price": "株価", "market_cap": "時価総額"}
+             "price": "株価", "market_cap_usd": "時価総額($)"}
 view = res[list(MAIN_COLS)].rename(columns=MAIN_COLS)
 
-st.caption("行をクリックすると、その銘柄の詳細と数年分の財務が下に表示されます")
+st.caption(f"行をクリックで詳細＋数年分の財務 ／ 時価総額は日米比較のためUSD換算（1ドル≒{usdjpy_rate():.0f}円）")
 event = st.dataframe(
     view,
     width="stretch",
@@ -460,7 +477,7 @@ event = st.dataframe(
     selection_mode="single-row",
     column_config={
         "株価": st.column_config.NumberColumn(format="%.1f"),
-        "時価総額": st.column_config.NumberColumn(format="compact"),
+        "時価総額($)": st.column_config.NumberColumn(format="compact"),
     },
 )
 
