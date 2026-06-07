@@ -466,15 +466,26 @@ res = res.sort_values(SORT_COLS[sort_label], ascending=ascending, na_position="l
 MAIN_COLS = {"_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
              "price": "株価", "market_cap_usd": "時価総額($)"}
 view = res[list(MAIN_COLS)].rename(columns=MAIN_COLS)
+view["市場"] = view["市場"].map({"JP": "日本", "US": "米国"}).fillna(view["市場"])
 
-st.caption(f"行をクリックで詳細＋数年分の財務 ／ 時価総額は日米比較のためUSD換算（1ドル≒{usdjpy_rate():.0f}円）")
+
+def _row_tint(r):
+    # 日本=うっすらグレー / 米国=白 でやさしく区別
+    bg = "#f1f2f4" if r["市場"] == "日本" else "#ffffff"
+    return [f"background-color:{bg}"] * len(r)
+
+
+styled = view.style.apply(_row_tint, axis=1)
+
+st.caption(f"行クリック（スマホは下の選択ボックス）で詳細＋数年分の財務 ／ 時価総額は日米比較のためUSD換算（1ドル≒{usdjpy_rate():.0f}円）")
 event = st.dataframe(
-    view,
+    styled,
     width="stretch",
     hide_index=True,
-    height=520,
+    height=430,
     on_select="rerun",
     selection_mode="single-row",
+    key="result_tbl",
     column_config={
         "株価": st.column_config.NumberColumn(format="%.1f"),
         "時価総額($)": st.column_config.NumberColumn(format="compact"),
@@ -497,12 +508,22 @@ st.download_button(
     icon=":material/download:",
 )
 
-# ====== 行クリックで詳細パネル ======
-selected = event.selection.rows if (event and event.selection) else []
-if selected:
-    render_detail(res.iloc[selected[0]])
+# ====== 詳細パネル（一覧の行クリック or 下のセレクトボックス） ======
+names = [f"{n}　{t}" for n, t in zip(res["_disp"], res["ticker"])]
+pick = st.selectbox(":material/search: 詳細を見る銘柄（一覧の行クリックでも開けます）", ["—"] + names, index=0)
+
+rows = event.selection.rows if (event and event.selection) else []
+if rows:                                   # 一覧クリックを優先
+    chosen = res.iloc[rows[0]]
+elif pick != "—":                          # スマホ等はこちらで確実に選べる
+    chosen = res.iloc[names.index(pick)]
+else:
+    chosen = None
+
+if chosen is not None:
+    render_detail(chosen)
 else:
     st.info(
-        "↑ 一覧から銘柄を選ぶと、ここに詳細（移した指標＋数年分の財務＋株価チャート）が表示されます。",
+        "一覧の行をクリック、または上のボックスで銘柄を選ぶと、ここに詳細（移した指標＋数年分の財務＋株価チャート）が表示されます。",
         icon=":material/touch_app:",
     )
