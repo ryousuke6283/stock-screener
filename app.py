@@ -13,7 +13,31 @@ import streamlit as st
 HERE = Path(__file__).parent
 DATA = HERE / "data.parquet"
 
-st.set_page_config(page_title="株スクリーナー", page_icon="📊", layout="wide")
+# セクターの日本語表記（日本株=yfinance系 と 米国株=GICS系 で表記が違うので両方を同じ和名に統一）
+SECTOR_JP = {
+    "Information Technology": "情報技術", "Technology": "情報技術",
+    "Health Care": "ヘルスケア", "Healthcare": "ヘルスケア",
+    "Financials": "金融", "Financial Services": "金融",
+    "Consumer Discretionary": "一般消費財", "Consumer Cyclical": "一般消費財",
+    "Consumer Staples": "生活必需品", "Consumer Defensive": "生活必需品",
+    "Industrials": "資本財・サービス",
+    "Energy": "エネルギー",
+    "Materials": "素材", "Basic Materials": "素材",
+    "Utilities": "公益事業",
+    "Real Estate": "不動産",
+    "Communication Services": "コミュニケーション",
+}
+
+# ブランドロゴ（Lucide candlestick-chart / currentColorでモノトーン追従）
+LOGO_SVG = (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/>'
+    '<path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/>'
+    '<path d="M3 3v18h18"/></svg>'
+)
+
+st.set_page_config(page_title="株スクリーナー", page_icon=":material/candlestick_chart:", layout="wide")
 
 
 # ---------------- デザイン: kintai-css (BICEPSモノトーン業務SaaS) を翻訳適用 ----------------
@@ -38,9 +62,9 @@ def inject_css() -> None:
           font-feature-settings:"palt";
         }
         .stApp { background:#fff; }
-        .stApp, [data-testid="stSidebar"] { font-size:13px; }
+        .stApp, [data-testid="stSidebar"] { font-size:12px; }
         [data-testid="stMarkdownContainer"] p,
-        [data-testid="stMarkdownContainer"] li { font-size:13px; }
+        [data-testid="stMarkdownContainer"] li { font-size:12px; }
         [data-testid="stWidgetLabel"] p, .stRadio label, .stSelectbox label {
           font-size:12px !important; color:var(--text-soft);
         }
@@ -95,7 +119,32 @@ def inject_css() -> None:
         }
 
         /* === キャプション/補助テキストは小さく muted === */
-        [data-testid="stCaptionContainer"] { color:var(--text-soft); font-size:12px; }
+        [data-testid="stCaptionContainer"] { color:var(--text-soft); font-size:11.5px; }
+
+        /* === ブランド（サイドバー見出し）: ロゴ+ワードマーク === */
+        .brand {
+          display:flex; align-items:center; gap:9px;
+          font-size:17px; font-weight:700; letter-spacing:-0.03em;
+          color:#09090b; margin:0 0 10px;
+        }
+        .brand svg { width:21px; height:21px; flex-shrink:0; color:var(--primary); }
+
+        /* === ヒーロー（メイン見出し）: kicker + ロゴ + サブ + 下ヘアライン === */
+        .hero { margin:0 0 16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+        .hero-kicker {
+          font-size:10.5px; font-weight:700; letter-spacing:0.22em;
+          text-transform:uppercase; color:var(--text-soft);
+        }
+        .hero-title {
+          display:flex; align-items:center; gap:10px; margin-top:5px;
+          font-size:20px; font-weight:700; letter-spacing:-0.03em; color:#09090b;
+          line-height:1.2;
+        }
+        .hero-title svg { width:22px; height:22px; flex-shrink:0; color:var(--primary); }
+        .hero-sub { margin-top:6px; font-size:12px; color:var(--text-soft); }
+
+        /* === メイン領域のドロップダウン等が横に伸びすぎないよう上限 === */
+        section[data-testid="stMain"] [data-baseweb="select"] { max-width:460px; }
 
         /* === 余白を締める & Streamlit既定の装飾を控えめに === */
         .block-container { padding-top:2rem; }
@@ -118,6 +167,7 @@ def load_data() -> pd.DataFrame:
     df["roa_pct"] = df["roa"] * 100
     df["rev_growth_pct"] = df["revenue_growth"] * 100
     df["earn_growth_pct"] = df["earnings_growth"] * 100
+    df["sector_jp"] = df["sector"].map(SECTOR_JP).fillna(df["sector"])
     return df
 
 
@@ -170,7 +220,10 @@ def apply_preset(cfg: dict):
 
 
 # ---------------- サイドバー ----------------
-st.sidebar.title(":material/candlestick_chart: 株スクリーナー")
+st.sidebar.markdown(
+    f'<div class="brand">{LOGO_SVG}<span>株スクリーナー</span></div>',
+    unsafe_allow_html=True,
+)
 st.sidebar.caption(f"データ更新: {fetched:%Y-%m-%d %H:%M} JST")
 
 st.sidebar.subheader(":material/style: スタイル別プリセット")
@@ -186,8 +239,8 @@ st.sidebar.divider()
 # 市場
 market = st.sidebar.radio(":material/public: 市場", ["両方", "日本株", "米国株"], horizontal=True)
 
-# セクター
-sectors = sorted(df["sector"].dropna().unique())
+# セクター（日本語表記）
+sectors = sorted(df["sector_jp"].dropna().unique())
 sel_sectors = st.sidebar.multiselect(":material/category: セクター（空＝全部）", sectors, default=[])
 
 st.sidebar.subheader(":material/tune: 詳細条件")
@@ -203,7 +256,7 @@ elif market == "米国株":
     mask &= df["market"].eq("US")
 
 if sel_sectors:
-    mask &= df["sector"].isin(sel_sectors)
+    mask &= df["sector_jp"].isin(sel_sectors)
 
 active_filters = []
 for key, label, lo, hi, step, kind, col in SLIDERS:
@@ -219,7 +272,16 @@ for key, label, lo, hi, step, kind, col in SLIDERS:
 res = df[mask].copy()
 
 # ---------------- メイン表示 ----------------
-st.title(":material/query_stats: 日本株・米国株 スクリーニング")
+st.markdown(
+    f"""
+    <div class="hero">
+      <div class="hero-kicker">STOCK SCREENER</div>
+      <div class="hero-title">{LOGO_SVG}<span>日本株・米国株 スクリーニング</span></div>
+      <div class="hero-sub">Nikkei&nbsp;225 + S&amp;P&nbsp;500 ・ {len(df)}銘柄をスタイル別に絞り込み</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 m1, m2, m3 = st.columns(3)
 m1.metric(":material/filter_alt: 該当銘柄", f"{len(res)} 件")
@@ -233,7 +295,7 @@ else:
 
 # 表示する列と日本語ヘッダ
 DISPLAY = {
-    "ticker": "コード", "name": "銘柄", "market": "市場", "sector": "セクター",
+    "ticker": "コード", "name": "銘柄", "market": "市場", "sector_jp": "セクター",
     "price": "株価", "currency": "通貨", "market_cap": "時価総額",
     "per": "PER", "pbr": "PBR", "psr": "PSR", "dividend_yield": "配当%",
     "roe_pct": "ROE%", "rev_growth_pct": "増収%", "earn_growth_pct": "増益%",
@@ -242,9 +304,12 @@ DISPLAY = {
 }
 view = res[list(DISPLAY)].rename(columns=DISPLAY)
 
-# 並べ替え用デフォルト
-sort_col = st.selectbox(":material/sort: 並べ替え", list(DISPLAY.values()), index=list(DISPLAY.values()).index("配当%"))
-ascending = st.toggle("昇順", value=False)
+# 並べ替え（横伸びしないよう幅を絞る）
+sc1, sc2, _ = st.columns([3, 2, 7])
+with sc1:
+    sort_col = st.selectbox(":material/sort: 並べ替え", list(DISPLAY.values()), index=list(DISPLAY.values()).index("配当%"))
+with sc2:
+    ascending = st.toggle("昇順", value=False)
 view = view.sort_values(sort_col, ascending=ascending, na_position="last")
 
 st.dataframe(
