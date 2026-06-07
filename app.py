@@ -24,66 +24,73 @@ def inject_css() -> None:
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap');
 
         :root {
-          --primary:#18181b; --primary-dark:#09090b; --primary-pale:#f4f4f5;
-          --border:#e4e4e7; --border-subtle:#f1f1f3; --muted:#fafafa;
-          --text:#0f172a; --text-soft:#64748b; --info:#2563eb;
-          --radius:10px; --radius-sm:6px;
+          --primary:#18181b; --primary-dark:#09090b;
+          --border:#d4d4d8; --border-subtle:#e4e4e7; --muted:#f4f4f5;
+          --text:#1e293b; --text-soft:#64748b; --info:#2563eb;
+          --radius:18px; --radius-sm:10px; --radius-pill:999px;
         }
 
-        /* === タイポgrafィ: Inter + Noto Sans JP、わずかにタイト === */
-        html, body, .stApp, [data-testid="stAppViewContainer"],
-        [data-testid="stSidebar"], button, input, select, textarea {
+        /* === タイポ: Inter + Noto Sans JP、全体的に小さめ === */
+        html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stSidebar"],
+        button, input, select, textarea, [data-testid="stMarkdownContainer"] {
           font-family:"Inter","Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif !important;
           letter-spacing:-0.005em;
           font-feature-settings:"palt";
         }
         .stApp { background:#fff; }
+        .stApp, [data-testid="stSidebar"] { font-size:13px; }
+        [data-testid="stMarkdownContainer"] p,
+        [data-testid="stMarkdownContainer"] li { font-size:13px; }
+        [data-testid="stWidgetLabel"] p, .stRadio label, .stSelectbox label {
+          font-size:12px !important; color:var(--text-soft);
+        }
 
-        /* === 見出し階層 (24/20/15) === */
-        h1 { font-size:24px !important; font-weight:600 !important; letter-spacing:-0.015em !important; color:var(--text); }
-        h2 { font-size:20px !important; font-weight:600 !important; letter-spacing:-0.015em !important; color:var(--text); }
-        h3 { font-size:15px !important; font-weight:600 !important; color:var(--text); }
+        /* === 見出し: 小さめ + より黒く (黒の存在感を増す) === */
+        h1 { font-size:21px !important; font-weight:700 !important; letter-spacing:-0.02em !important; color:#09090b !important; }
+        h2 { font-size:16px !important; font-weight:600 !important; letter-spacing:-0.015em !important; color:#09090b !important; }
+        h3 { font-size:13px !important; font-weight:600 !important; color:#18181b !important; }
 
-        /* === サイドバー: 右にヘアライン === */
+        /* === サイドバー: 薄グレーのパネル + ヘアライン (灰色を足す) === */
         [data-testid="stSidebar"] {
-          background:#fff;
+          background:#f7f7f8;
           border-right:1px solid var(--border);
         }
 
-        /* === ボタン: shadcn風セカンダリ (白+細枠, ホバーで薄muted, 浮かせない) === */
+        /* === ボタン: 楕円ピル形 (白+細枠, ホバーで濃いグレー枠) === */
         .stButton > button, [data-testid="stDownloadButton"] > button {
           background:#fff; color:var(--text);
-          border:1px solid var(--border); border-radius:var(--radius-sm);
-          font-size:13px; font-weight:500; box-shadow:none;
+          border:1px solid var(--border); border-radius:var(--radius-pill);
+          font-size:12.5px; font-weight:500; box-shadow:none; padding:6px 14px;
           transition:background .12s, border-color .12s;
         }
         .stButton > button:hover, [data-testid="stDownloadButton"] > button:hover {
-          background:var(--muted); border-color:#d4d4d8; color:var(--text);
+          background:var(--muted); border-color:#a1a1aa; color:#09090b;
         }
-        .stButton > button:focus:not(:active) { box-shadow:0 0 0 3px rgba(15,23,42,.10); }
+        .stButton > button:focus:not(:active) { box-shadow:0 0 0 3px rgba(15,23,42,.12); }
 
-        /* === metric: ヘアラインのカード化 === */
+        /* === metric: 丸いグレーのカード (灰色を足す + 角丸を強く) === */
         [data-testid="stMetric"] {
-          background:#fff; border:1px solid var(--border);
-          border-radius:var(--radius); padding:14px 16px;
+          background:#fafafa; border:1px solid var(--border);
+          border-radius:var(--radius); padding:12px 16px;
         }
-        [data-testid="stMetricLabel"] p { color:var(--text-soft); font-size:13px; }
+        [data-testid="stMetricLabel"] p { color:var(--text-soft); font-size:12px; }
+        [data-testid="stMetricValue"] { font-size:1.5rem !important; font-weight:700; color:#09090b; }
 
-        /* === dataframe: ヘアライン枠 + 角丸 === */
+        /* === dataframe: 丸いヘアライン枠 === */
         [data-testid="stDataFrame"] {
           border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
         }
 
-        /* === 入力/セレクト: 角丸6px、フォーカスで黒リング === */
+        /* === 入力/セレクト: 角丸 === */
         [data-baseweb="select"] > div, .stTextInput input, .stNumberInput input {
           border-radius:var(--radius-sm) !important;
         }
 
-        /* === キャプション/補助テキストは muted === */
-        [data-testid="stCaptionContainer"] { color:var(--text-soft); }
+        /* === キャプション/補助テキストは小さく muted === */
+        [data-testid="stCaptionContainer"] { color:var(--text-soft); font-size:12px; }
 
-        /* === 余白を少し締める & Streamlit既定の装飾を控えめに === */
-        .block-container { padding-top:2.2rem; }
+        /* === 余白を締める & Streamlit既定の装飾を控えめに === */
+        .block-container { padding-top:2rem; }
         #MainMenu, footer, [data-testid="stDecoration"] { visibility:hidden; }
         </style>
         """,
