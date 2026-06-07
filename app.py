@@ -177,6 +177,13 @@ def inject_css() -> None:
         .hero-sub { margin-top:6px; font-size:12px; color:var(--text-soft); }
         .dim { color:var(--text-soft); font-weight:400; font-size:13px; }
 
+        /* === 詳細の指標グリッド: PC=4列 / スマホ=2列（間延び防止）=== */
+        .metric-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:8px 0 4px; }
+        .metric-grid .m { background:#fafafa; border:1px solid var(--border); border-radius:12px; padding:9px 12px; }
+        .metric-grid .m-l { font-size:11px; color:var(--text-soft); margin-bottom:2px; }
+        .metric-grid .m-v { font-size:16px; font-weight:700; color:#09090b; letter-spacing:-0.02em; }
+        @media (max-width:640px) { .metric-grid { grid-template-columns:repeat(2,1fr); } }
+
         /* === メイン領域のドロップダウン等が横に伸びすぎないよう上限 === */
         section[data-testid="stMain"] [data-baseweb="select"] { max-width:460px; }
 
@@ -245,19 +252,52 @@ def compact(v) -> str:
 
 
 @st.cache_data(ttl=60 * 60, show_spinner=False)
-def fetch_financials(ticker: str):
-    """クリックされた1銘柄だけ、年次財務と株価履歴をyfinanceから取得（キャッシュ）。"""
+def fetch_income(ticker: str):
+    """年次の損益計算書を取得（クリックされた1銘柄のみ・キャッシュ）。"""
     import yfinance as yf
-    t = yf.Ticker(ticker)
     try:
-        inc = t.income_stmt
+        return yf.Ticker(ticker).income_stmt
     except Exception:
-        inc = None
+        return None
+
+
+# 株価チャートの期間 → yfinance の period/interval（"start"は今日からの日数指定）
+PERIODS = {
+    "1日": dict(period="1d", interval="5m"),
+    "1週": dict(period="5d", interval="15m"),
+    "2週": dict(start=14, interval="60m"),
+    "1ヶ月": dict(period="1mo", interval="1d"),
+    "3ヶ月": dict(period="3mo", interval="1d"),
+    "半年": dict(period="6mo", interval="1d"),
+    "1年": dict(period="1y", interval="1d"),
+    "2年": dict(period="2y", interval="1wk"),
+    "3年": dict(period="3y", interval="1wk"),
+    "5年": dict(period="5y", interval="1wk"),
+    "上場来": dict(period="max", interval="1mo"),
+}
+
+
+@st.cache_data(ttl=30 * 60, show_spinner=False)
+def fetch_price(ticker: str, label: str):
+    """指定期間の株価（終値）を取得。"""
+    import yfinance as yf
+    from datetime import date, timedelta
+    cfg = PERIODS[label]
     try:
-        hist = t.history(period="3y", interval="1wk")[["Close"]]
+        t = yf.Ticker(ticker)
+        if "start" in cfg:
+            h = t.history(start=date.today() - timedelta(days=cfg["start"]), interval=cfg["interval"])
+        else:
+            h = t.history(period=cfg["period"], interval=cfg["interval"])
+        if h is None or h.empty:
+            return None
+        return h[["Close"]].rename(columns={"Close": "終値"})
     except Exception:
-        hist = None
-    return inc, hist
+        return None
+
+
+# 棒グラフのモノトーン配色（売上=黒 / 営業利益=中グレー / 純利益=薄グレー）
+_BAR_GRAY = {"売上高": "#18181b", "営業利益": "#71717a", "純利益": "#a1a1aa"}
 
 
 def build_financials_table(inc, cur: str):
@@ -290,40 +330,52 @@ def render_detail(row: pd.Series) -> None:
         unsafe_allow_html=True,
     )
 
-    # メインから移した指標
-    g = st.columns(4)
-    g[0].metric("株価", f"{fmt(row['price'], 1)} {cur}")
-    g[1].metric("時価総額", f"${compact(row['market_cap_usd'])}",
-                help=f"現地通貨: {compact(row['market_cap'])} {cur}")
-    g[2].metric("PER", fmt(row["per"], 1))
-    g[3].metric("PBR", fmt(row["pbr"], 2))
-    g = st.columns(4)
-    g[0].metric("配当利回り", fmt(row["dividend_yield"], 2, "%"))
-    g[1].metric("ROE", fmt(row["roe_pct"], 1, "%"))
-    g[2].metric("増収率", fmt(row["rev_growth_pct"], 1, "%"))
-    g[3].metric("増益率", fmt(row["earn_growth_pct"], 1, "%"))
-    g = st.columns(4)
-    g[0].metric("PSR", fmt(row["psr"], 2))
-    g[1].metric("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"))
-    g[2].metric("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"))
-    g[3].metric("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"))
+    # メインから移した指標（PC=4列/スマホ=2列のグリッドで間延び防止）
+    items = [
+        ("株価", f"{fmt(row['price'], 1)} {cur}", ""),
+        ("時価総額", f"${compact(row['market_cap_usd'])}", f"現地通貨 {compact(row['market_cap'])} {cur}"),
+        ("PER", fmt(row["per"], 1), ""),
+        ("PBR", fmt(row["pbr"], 2), ""),
+        ("配当利回り", fmt(row["dividend_yield"], 2, "%"), ""),
+        ("ROE", fmt(row["roe_pct"], 1, "%"), ""),
+        ("増収率", fmt(row["rev_growth_pct"], 1, "%"), ""),
+        ("増益率", fmt(row["earn_growth_pct"], 1, "%"), ""),
+        ("PSR", fmt(row["psr"], 2), ""),
+        ("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"), ""),
+        ("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"), ""),
+        ("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"), ""),
+    ]
+    parts = []
+    for label, val, tip in items:
+        t = f' title="{tip}"' if tip else ""
+        parts.append(f'<div class="m"{t}><div class="m-l">{label}</div><div class="m-v">{val}</div></div>')
+    st.markdown(f'<div class="metric-grid">{"".join(parts)}</div>', unsafe_allow_html=True)
 
+    # 財務（年次） — グラフはモノトーン＆幅を左寄せで制限（PCで間延びさせない）
     with st.spinner("財務データを取得中…"):
-        inc, hist = fetch_financials(row["ticker"])
-
+        inc = fetch_income(row["ticker"])
     st.markdown("#### 財務（年次・数年分）")
     fin = build_financials_table(inc, cur)
     if fin is not None and not fin.empty:
         st.dataframe(fin, width="stretch")
         money_cols = [c for c in fin.columns if c.startswith(("売上高", "営業利益", "純利益"))]
         if money_cols:
-            st.bar_chart(fin[money_cols])
+            colors = [_BAR_GRAY[next(k for k in _BAR_GRAY if c.startswith(k))] for c in money_cols]
+            with st.columns([3, 2])[0]:
+                st.bar_chart(fin[money_cols], color=colors, height=260)
     else:
         st.caption("この銘柄の財務データは取得できませんでした。")
 
-    if hist is not None and not hist.empty:
-        st.markdown("#### 株価（約3年）")
-        st.line_chart(hist["Close"])
+    # 株価チャート（期間切替・モノトーン・"終値"表記）
+    st.markdown("#### 株価チャート")
+    period = st.segmented_control("期間", list(PERIODS), default="1年", key=f"pd_{row['ticker']}") or "1年"
+    with st.spinner("株価データを取得中…"):
+        h = fetch_price(row["ticker"], period)
+    if h is not None and not h.empty:
+        with st.columns([3, 2])[0]:
+            st.line_chart(h["終値"], color="#18181b", height=300)
+    else:
+        st.caption("この期間の株価データは取得できませんでした。")
 
 # ---------------- スライダー定義（OFF値＝この端ならフィルタ無効） ----------------
 # (key, ラベル, min, max, step, 種類['max'/'min'], 対象カラム)
