@@ -28,6 +28,39 @@ SECTOR_JP = {
     "Communication Services": "コミュニケーション",
 }
 
+# 米国主要銘柄のカタカナ名（辞書に無い銘柄は英語名のまま表示）
+US_NAME_JP = {
+    "AAPL": "アップル", "MSFT": "マイクロソフト", "NVDA": "エヌビディア",
+    "AMZN": "アマゾン", "GOOGL": "アルファベット", "GOOG": "アルファベット",
+    "META": "メタ・プラットフォームズ", "TSLA": "テスラ", "BRK-B": "バークシャー・ハサウェイ",
+    "AVGO": "ブロードコム", "JPM": "JPモルガン・チェース", "V": "ビザ", "MA": "マスターカード",
+    "UNH": "ユナイテッドヘルス", "XOM": "エクソンモービル", "JNJ": "ジョンソン&ジョンソン",
+    "PG": "P&G", "HD": "ホーム・デポ", "COST": "コストコ", "MRK": "メルク", "ABBV": "アッヴィ",
+    "CVX": "シェブロン", "PEP": "ペプシコ", "KO": "コカ・コーラ", "ADBE": "アドビ",
+    "WMT": "ウォルマート", "CRM": "セールスフォース", "BAC": "バンク・オブ・アメリカ",
+    "MCD": "マクドナルド", "NFLX": "ネットフリックス", "AMD": "AMD", "LIN": "リンデ",
+    "TMO": "サーモフィッシャー", "ACN": "アクセンチュア", "CSCO": "シスコシステムズ",
+    "ABT": "アボット", "DHR": "ダナハー", "INTC": "インテル", "QCOM": "クアルコム",
+    "TXN": "テキサス・インスツルメンツ", "INTU": "インテュイット", "IBM": "IBM",
+    "PM": "フィリップ・モリス", "CAT": "キャタピラー", "VZ": "ベライゾン",
+    "DIS": "ウォルト・ディズニー", "NKE": "ナイキ", "PFE": "ファイザー", "AMGN": "アムジェン",
+    "NOW": "サービスナウ", "UNP": "ユニオン・パシフィック", "GS": "ゴールドマン・サックス",
+    "HON": "ハネウェル", "RTX": "RTX", "SPGI": "S&Pグローバル", "LOW": "ロウズ",
+    "ISRG": "インテュイティブ・サージカル", "BKNG": "ブッキング", "AXP": "アメリカン・エキスプレス",
+    "T": "AT&T", "ELV": "エレバンス・ヘルス", "PLD": "プロロジス", "BLK": "ブラックロック",
+    "SYK": "ストライカー", "MDT": "メドトロニック", "GILD": "ギリアド・サイエンシズ",
+    "ADP": "ADP", "TJX": "TJX", "VRTX": "バーテックス", "C": "シティグループ",
+    "MMC": "マーシュ・マクレナン", "CB": "チャブ", "BSX": "ボストン・サイエンティフィック",
+    "MO": "アルトリア", "SO": "サザン", "ZTS": "ゾエティス", "CI": "シグナ",
+    "PGR": "プログレッシブ", "FI": "ファイサーブ", "BA": "ボーイング", "DE": "ディア",
+    "MU": "マイクロン", "LMT": "ロッキード・マーチン", "WFC": "ウェルズ・ファーゴ",
+    "KLAC": "KLA", "PANW": "パロアルトネットワークス", "SBUX": "スターバックス",
+    "MDLZ": "モンデリーズ", "AMAT": "アプライド・マテリアルズ", "ADI": "アナログ・デバイセズ",
+    "REGN": "リジェネロン", "ORCL": "オラクル", "F": "フォード", "GM": "ゼネラルモーターズ",
+    "UPS": "UPS", "PYPL": "ペイパル", "UBER": "ウーバー", "ABNB": "エアビーアンドビー",
+    "MS": "モルガン・スタンレー", "GE": "GEエアロスペース", "WM": "ウェイスト・マネジメント",
+}
+
 # ブランドロゴ（Lucide candlestick-chart / currentColorでモノトーン追従）
 LOGO_SVG = (
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
@@ -142,6 +175,7 @@ def inject_css() -> None:
         }
         .hero-title svg { width:22px; height:22px; flex-shrink:0; color:var(--primary); }
         .hero-sub { margin-top:6px; font-size:12px; color:var(--text-soft); }
+        .dim { color:var(--text-soft); font-weight:400; font-size:13px; }
 
         /* === メイン領域のドロップダウン等が横に伸びすぎないよう上限 === */
         section[data-testid="stMain"] [data-baseweb="select"] { max-width:460px; }
@@ -173,6 +207,106 @@ def load_data() -> pd.DataFrame:
 
 df = load_data()
 fetched = pd.to_datetime(df["fetched_at"].iloc[0]).tz_convert("Asia/Tokyo")
+
+
+# ---------------- 詳細パネル用ヘルパー ----------------
+def disp_name(ticker: str, name: str, market: str) -> str:
+    """米国株は辞書にあればカタカナ、無ければ英語名。日本株はそのまま。"""
+    return US_NAME_JP.get(ticker, name) if market == "US" else name
+
+
+def fmt(v, p: int = 2, suf: str = "") -> str:
+    return "—" if pd.isna(v) else f"{v:.{p}f}{suf}"
+
+
+def compact(v) -> str:
+    if pd.isna(v):
+        return "—"
+    for unit, d in (("T", 1e12), ("B", 1e9), ("M", 1e6)):
+        if abs(v) >= d:
+            return f"{v / d:.1f}{unit}"
+    return f"{v:.0f}"
+
+
+@st.cache_data(ttl=60 * 60, show_spinner=False)
+def fetch_financials(ticker: str):
+    """クリックされた1銘柄だけ、年次財務と株価履歴をyfinanceから取得（キャッシュ）。"""
+    import yfinance as yf
+    t = yf.Ticker(ticker)
+    try:
+        inc = t.income_stmt
+    except Exception:
+        inc = None
+    try:
+        hist = t.history(period="3y", interval="1wk")[["Close"]]
+    except Exception:
+        hist = None
+    return inc, hist
+
+
+def build_financials_table(inc, cur: str):
+    """income_stmt から 売上高/営業利益/純利益/EPS を年次テーブル化（古い年→新しい年）。"""
+    if inc is None or getattr(inc, "empty", True):
+        return None
+    cols = list(inc.columns)[:4][::-1]      # 直近4年、古い順
+    years = [str(getattr(c, "year", c)) for c in cols]
+    out = pd.DataFrame(index=years)
+    money = {"Total Revenue": f"売上高(十億{cur})", "Operating Income": f"営業利益(十億{cur})",
+             "Net Income": f"純利益(十億{cur})"}
+    for key, label in money.items():
+        if key in inc.index:
+            out[label] = [round(inc.loc[key, c] / 1e9, 1) if pd.notna(inc.loc[key, c]) else None for c in cols]
+    for key in ("Diluted EPS", "Basic EPS"):
+        if key in inc.index:
+            out["EPS"] = [round(inc.loc[key, c], 2) if pd.notna(inc.loc[key, c]) else None for c in cols]
+            break
+    return out
+
+
+def render_detail(row: pd.Series) -> None:
+    name = disp_name(row["ticker"], row["name"], row["market"])
+    cur = row.get("currency") or ""
+    market_jp = "日本株" if row["market"] == "JP" else "米国株"
+    st.divider()
+    st.markdown(
+        f"### {name} "
+        f"<span class='dim'>{row['ticker']} · {market_jp} · {row['sector_jp']}</span>",
+        unsafe_allow_html=True,
+    )
+
+    # メインから移した指標
+    g = st.columns(4)
+    g[0].metric("株価", f"{fmt(row['price'], 1)} {cur}")
+    g[1].metric("時価総額", compact(row["market_cap"]))
+    g[2].metric("PER", fmt(row["per"], 1))
+    g[3].metric("PBR", fmt(row["pbr"], 2))
+    g = st.columns(4)
+    g[0].metric("配当利回り", fmt(row["dividend_yield"], 2, "%"))
+    g[1].metric("ROE", fmt(row["roe_pct"], 1, "%"))
+    g[2].metric("増収率", fmt(row["rev_growth_pct"], 1, "%"))
+    g[3].metric("増益率", fmt(row["earn_growth_pct"], 1, "%"))
+    g = st.columns(4)
+    g[0].metric("PSR", fmt(row["psr"], 2))
+    g[1].metric("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"))
+    g[2].metric("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"))
+    g[3].metric("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"))
+
+    with st.spinner("財務データを取得中…"):
+        inc, hist = fetch_financials(row["ticker"])
+
+    st.markdown("#### 財務（年次・数年分）")
+    fin = build_financials_table(inc, cur)
+    if fin is not None and not fin.empty:
+        st.dataframe(fin, width="stretch")
+        money_cols = [c for c in fin.columns if c.startswith(("売上高", "営業利益", "純利益"))]
+        if money_cols:
+            st.bar_chart(fin[money_cols])
+    else:
+        st.caption("この銘柄の財務データは取得できませんでした。")
+
+    if hist is not None and not hist.empty:
+        st.markdown("#### 株価（約3年）")
+        st.line_chart(hist["Close"])
 
 # ---------------- スライダー定義（OFF値＝この端ならフィルタ無効） ----------------
 # (key, ラベル, min, max, step, 種類['max'/'min'], 対象カラム)
@@ -293,50 +427,65 @@ if active_filters:
 else:
     st.caption("数値条件なし（市場・セクターのみ）")
 
-# 表示する列と日本語ヘッダ
-DISPLAY = {
-    "ticker": "コード", "name": "銘柄", "market": "市場", "sector_jp": "セクター",
-    "price": "株価", "currency": "通貨", "market_cap": "時価総額",
-    "per": "PER", "pbr": "PBR", "psr": "PSR", "dividend_yield": "配当%",
-    "roe_pct": "ROE%", "rev_growth_pct": "増収%", "earn_growth_pct": "増益%",
-    "pct_vs_ma50": "50d乖離%", "pct_vs_ma200": "200d乖離%",
-    "pct_from_52w_high": "52w高値比%",
-}
-view = res[list(DISPLAY)].rename(columns=DISPLAY)
+# ====== 一覧（コンパクト）: コード/通貨/PER以降は詳細パネルへ移動 ======
+res = res.assign(
+    _disp=[disp_name(t, n, m) for t, n, m in zip(res["ticker"], res["name"], res["market"])]
+)
 
-# 並べ替え（横伸びしないよう幅を絞る）
-sc1, sc2, _ = st.columns([3, 2, 7])
+# 並べ替え（表示していない指標でもソート可能） — 下端揃えで行をきれいに
+SORT_COLS = {
+    "時価総額": "market_cap", "株価": "price", "PER": "per", "PBR": "pbr",
+    "配当%": "dividend_yield", "ROE%": "roe_pct", "増収%": "rev_growth_pct",
+    "200日線乖離%": "pct_vs_ma200",
+}
+sc1, sc2 = st.columns([3, 1], vertical_alignment="bottom")
 with sc1:
-    sort_col = st.selectbox(":material/sort: 並べ替え", list(DISPLAY.values()), index=list(DISPLAY.values()).index("配当%"))
+    sort_label = st.selectbox(":material/sort: 並べ替え", list(SORT_COLS), index=0)
 with sc2:
     ascending = st.toggle("昇順", value=False)
-view = view.sort_values(sort_col, ascending=ascending, na_position="last")
+res = res.sort_values(SORT_COLS[sort_label], ascending=ascending, na_position="last").reset_index(drop=True)
 
-st.dataframe(
+# メイン表示はコンパクトに（銘柄・市場・セクター・株価・時価総額のみ）
+MAIN_COLS = {"_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
+             "price": "株価", "market_cap": "時価総額"}
+view = res[list(MAIN_COLS)].rename(columns=MAIN_COLS)
+
+st.caption("行をクリックすると、その銘柄の詳細と数年分の財務が下に表示されます")
+event = st.dataframe(
     view,
     width="stretch",
     hide_index=True,
-    height=620,
+    height=520,
+    on_select="rerun",
+    selection_mode="single-row",
     column_config={
         "株価": st.column_config.NumberColumn(format="%.1f"),
         "時価総額": st.column_config.NumberColumn(format="compact"),
-        "PER": st.column_config.NumberColumn(format="%.1f"),
-        "PBR": st.column_config.NumberColumn(format="%.2f"),
-        "PSR": st.column_config.NumberColumn(format="%.2f"),
-        "配当%": st.column_config.NumberColumn(format="%.2f"),
-        "ROE%": st.column_config.NumberColumn(format="%.1f"),
-        "増収%": st.column_config.NumberColumn(format="%.1f"),
-        "増益%": st.column_config.NumberColumn(format="%.1f"),
-        "50d乖離%": st.column_config.NumberColumn(format="%.1f"),
-        "200d乖離%": st.column_config.NumberColumn(format="%.1f"),
-        "52w高値比%": st.column_config.NumberColumn(format="%.1f"),
     },
 )
 
+# CSVは全指標を残す
+EXPORT = {
+    "ticker": "コード", "_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
+    "price": "株価", "currency": "通貨", "market_cap": "時価総額",
+    "per": "PER", "pbr": "PBR", "psr": "PSR", "dividend_yield": "配当%",
+    "roe_pct": "ROE%", "rev_growth_pct": "増収%", "earn_growth_pct": "増益%",
+    "pct_vs_ma50": "50d乖離%", "pct_vs_ma200": "200d乖離%", "pct_from_52w_high": "52w高値比%",
+}
 st.download_button(
-    "この結果をCSVダウンロード",
-    view.to_csv(index=False).encode("utf-8-sig"),
+    "この結果をCSVダウンロード（全指標）",
+    res[list(EXPORT)].rename(columns=EXPORT).to_csv(index=False).encode("utf-8-sig"),
     file_name="screen_result.csv",
     mime="text/csv",
     icon=":material/download:",
 )
+
+# ====== 行クリックで詳細パネル ======
+selected = event.selection.rows if (event and event.selection) else []
+if selected:
+    render_detail(res.iloc[selected[0]])
+else:
+    st.info(
+        "↑ 一覧から銘柄を選ぶと、ここに詳細（移した指標＋数年分の財務＋株価チャート）が表示されます。",
+        icon=":material/touch_app:",
+    )
