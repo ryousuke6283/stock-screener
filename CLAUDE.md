@@ -11,6 +11,19 @@ Streamlit Webダッシュボード。スマホ・PCどちらからでも見ら�
 - **公開アプリ**: https://stock-screener-hfomupdqkfl9aexgiqw9vm.streamlit.app
 - **GitHub**: https://github.com/ryousuke6283/stock-screener （Public）
 
+## 🔄 同期プロトコル（Claudeは毎回これを自動で守ること）
+
+このプロジェクトは **PC・スマホ・クラウドの複数環境**から触られる。
+ユーザーは同期作業を覚えていないので、**Claude側が自動で面倒を見ること。**
+
+1. **作業を始める前に必ず**: `git pull --ff-only origin main` を実行して最新化する。
+   - もし fast-forward できない（履歴が分岐した）場合は、勝手にマージせず**ユーザーに状況を報告**する。
+2. **変更を1つ仕上げるたびに**: `git add -A && git commit && git push origin main` まで実行する。
+   - 「コミットしたけど push していない」状態でセッションを終えない。
+3. セッションの最後に、**未push の変更が残っていないか確認**し、あれば push する。
+
+→ これにより、ユーザーは「pushし忘れ/pullし忘れ」を一切気にしなくてよい。
+
 ## アーキテクチャ（重要）
 
 「ローカルDBを毎回ネット取得」ではなく、**スナップショット運用**で速くしている：
