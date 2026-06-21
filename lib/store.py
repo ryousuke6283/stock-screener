@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 HOLD_COLS = ["ticker", "shares", "avg_cost", "fx_cost"]
+CASH_COLS = ["bank", "amount_jpy"]
 
 
 @st.cache_resource(show_spinner=False)
@@ -28,18 +29,27 @@ def _ws(name: str, headers: list):
         return ws
 
 
-def read_cash() -> float:
-    recs = _ws("cash", ["amount_jpy"]).get_all_records()
-    if recs:
-        try:
-            return float(recs[0].get("amount_jpy") or 0)
-        except (TypeError, ValueError):
-            return 0.0
-    return 0.0
+def read_banks() -> pd.DataFrame:
+    """銀行ごとの預金（bank, amount_jpy）。合計が現預金になる。"""
+    recs = _ws("cash", CASH_COLS).get_all_records()
+    df = pd.DataFrame(recs, columns=CASH_COLS)
+    if not df.empty:
+        df["bank"] = df["bank"].astype(str).str.strip()
+        df["amount_jpy"] = pd.to_numeric(df["amount_jpy"], errors="coerce")
+        df = df[~df["bank"].isin(["", "nan", "None", "NaN"])].dropna(subset=["amount_jpy"]).reset_index(drop=True)
+    return df
 
 
-def write_cash(amount_jpy: float) -> None:
-    _ws("cash", ["amount_jpy"]).update([["amount_jpy"], [float(amount_jpy)]])
+def write_banks(df: pd.DataFrame) -> None:
+    out = [CASH_COLS]
+    for _, r in df.iterrows():
+        bank = str(r["bank"]).strip()
+        if not bank:
+            continue
+        out.append([bank, float(r["amount_jpy"])])
+    ws = _ws("cash", CASH_COLS)
+    ws.clear()
+    ws.update(out)
 
 
 def read_holdings() -> pd.DataFrame:

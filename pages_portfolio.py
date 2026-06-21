@@ -34,12 +34,13 @@ if not _gate():
 
 # ---- データ読み込み ----
 try:
-    cash = store.read_cash()
+    banks = store.read_banks()
     holdings = store.read_holdings()
 except Exception as e:
     st.error(f"データの読み込みに失敗しました: {e}")
     st.stop()
 
+cash = float(pd.to_numeric(banks["amount_jpy"], errors="coerce").sum()) if not banks.empty else 0.0
 rate = usdjpy_rate()
 quotes = prices.fetch_quotes(tuple(holdings["ticker"])) if not holdings.empty else {}
 pos = compute_positions(holdings, quotes, rate)
@@ -57,11 +58,26 @@ c[3].metric(":material/show_chart: 株式評価額", _yen(s["stock_jpy"]))
 
 st.divider()
 
-# ---- 現預金の編集 ----
-st.markdown("#### :material/savings: 現預金")
-new_cash = st.number_input("現預金（円）", min_value=0.0, value=float(cash), step=10000.0, format="%.0f")
-if st.button("現預金を保存", type="primary", icon=":material/save:"):
-    store.write_cash(new_cash)
+# ---- 預金（銀行ごと）----
+st.markdown("#### :material/savings: 預金（銀行ごと）")
+st.caption("銀行を行ごとに追加できます。合計が上の「現預金」になります。")
+bver = st.session_state.setdefault("pf_bank_ver", 0)
+banks_src = banks if not banks.empty else pd.DataFrame(columns=store.CASH_COLS)
+banks_edited = st.data_editor(
+    banks_src,
+    num_rows="dynamic",
+    width="stretch",
+    column_config={
+        "bank": st.column_config.TextColumn("銀行", required=True),
+        "amount_jpy": st.column_config.NumberColumn("残高(円)", min_value=0.0, format="¥%.0f"),
+    },
+    key=f"pf_bank_{bver}",
+)
+bank_total = float(pd.to_numeric(banks_edited["amount_jpy"], errors="coerce").sum()) if not banks_edited.empty else 0.0
+st.caption(f"預金合計: ¥{bank_total:,.0f}")
+if st.button("預金を保存", type="primary", icon=":material/save:"):
+    store.write_banks(banks_edited)
+    st.session_state["pf_bank_ver"] = bver + 1
     st.success("保存しました。")
     st.rerun()
 
