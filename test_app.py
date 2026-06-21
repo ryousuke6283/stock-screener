@@ -2,7 +2,7 @@
 """AppTest で app.py を実機実行し、例外なし＆プリセット動作を検証する"""
 from streamlit.testing.v1 import AppTest
 
-at = AppTest.from_file("app.py", default_timeout=60).run()
+at = AppTest.from_file("pages_screener.py", default_timeout=60).run()
 assert not at.exception, f"起動時に例外: {at.exception}"
 
 # 初期状態（条件なし）の件数を取得
@@ -19,7 +19,7 @@ print(f"バリュー適用後: {value_n} 件 / 条件: {[s for s in at.caption]}
 assert value_n < total, "バリュー条件で件数が減っていない"
 
 # 「グロース」も試す
-at2 = AppTest.from_file("app.py", default_timeout=60).run()
+at2 = AppTest.from_file("pages_screener.py", default_timeout=60).run()
 g = next(b for b in at2.button if b.label == "グロース（成長）")
 g.click().run()
 assert not at2.exception
