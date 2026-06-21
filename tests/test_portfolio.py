@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 from lib.portfolio import compute_positions, summarize
 
@@ -35,7 +38,25 @@ def main():
     s = summarize(pos, cash_jpy=500000.0, usdjpy=usdjpy)
     assert abs(s["stock_jpy"] - (285000.0 + 300000.0)) < 1e-6
     assert abs(s["total_jpy"] - (285000.0 + 300000.0 + 500000.0)) < 1e-6
+    # fx_cost 無し: 原価は現在レート(150)で換算 → AAPL原価=1500*150=225000 / pl=585000-425000=160000
     assert abs(s["pl_jpy"] - 160000.0) < 1e-6
+
+    # --- fx_cost あり: 米国株の原価を「取得時ドル円」で換算 ---
+    holdings2 = pd.DataFrame([
+        {"ticker": "7203.T", "shares": 100, "avg_cost": 2000.0, "fx_cost": None},
+        {"ticker": "AAPL", "shares": 10, "avg_cost": 150.0, "fx_cost": 140.0},  # 取得時140円/$
+    ])
+    pos2 = compute_positions(holdings2, prices, usdjpy)
+    a2 = pos2[pos2.ticker == "AAPL"].iloc[0]
+    # 原価(¥)=150*10*140=210000、評価額(¥)=200*10*150=300000、損益(¥)=90000
+    assert abs(a2.cost_jpy - 210000.0) < 1e-6
+    assert abs(a2.value_jpy - 300000.0) < 1e-6
+    assert abs(a2.pl_jpy - 90000.0) < 1e-6
+    t2 = pos2[pos2.ticker == "7203.T"].iloc[0]
+    assert abs(t2.cost_jpy - 200000.0) < 1e-6  # 日本株はfx無関係
+    s2 = summarize(pos2, cash_jpy=0.0)
+    # 原価合計=200000+210000=410000、評価合計=285000+300000=585000、損益=175000
+    assert abs(s2["pl_jpy"] - 175000.0) < 1e-6
     print("OK: test_portfolio passed")
 
 

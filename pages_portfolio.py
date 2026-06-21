@@ -69,20 +69,27 @@ st.divider()
 
 # ---- 保有株の編集 ----
 st.markdown("#### :material/edit_note: 保有株を編集")
-st.caption("行の追加・編集・削除ができます。ticker は 日本株=4桁+.T（例 7203.T）/ 米国株=シンボル（例 AAPL）")
+st.caption("行の追加・編集・削除ができます。米国株は『取得時¥/$』に買った時の1ドル=円を入れると損益が正確になります（空欄なら現在レート）。")
+ver = st.session_state.setdefault("pf_editor_ver", 0)
+src = holdings if not holdings.empty else pd.DataFrame(columns=store.HOLD_COLS)
 edited = st.data_editor(
-    holdings if not holdings.empty else pd.DataFrame(columns=store.HOLD_COLS),
+    src,
     num_rows="dynamic",
     width="stretch",
     column_config={
-        "ticker": st.column_config.TextColumn("ティッカー", required=True),
+        "ticker": st.column_config.TextColumn("ティッカー", required=True,
+                                              help="日本株=4桁+.T (例 7203.T) / 米国株=シンボル (例 AAPL)"),
         "shares": st.column_config.NumberColumn("株数", min_value=0.0, step=1.0),
-        "avg_cost": st.column_config.NumberColumn("平均取得単価", min_value=0.0),
+        "avg_cost": st.column_config.NumberColumn("平均取得単価", min_value=0.0,
+                                                  help="現地通貨建て（日本株=円 / 米国株=ドル）"),
+        "fx_cost": st.column_config.NumberColumn("取得時¥/$ (米国株)", min_value=0.0,
+                                                 help="米国株のみ: 買った時の1ドル=何円。空欄なら現在レートで換算"),
     },
-    key="pf_editor",
+    key=f"pf_editor_{ver}",
 )
 if st.button("保有株を保存", type="primary", icon=":material/save:"):
     store.write_holdings(edited)
+    st.session_state["pf_editor_ver"] = ver + 1   # 保存後はエディタを作り直して編集詰まりを防ぐ
     st.success("保存しました。")
     st.rerun()
 
@@ -97,12 +104,10 @@ else:
         "銘柄": [disp_name(t, t, "US" if not t.endswith(".T") else "JP") for t in pos["ticker"]],
         "株数": pos["shares"],
         "取得単価": pos["avg_cost"],
+        "取得時¥/$": pos["fx_cost"],
         "現在値": pos["price"],
         "評価額(¥)": pos["value_jpy"],
-        "損益(¥)": [v - c if (not pd.isna(v)) else float("nan")
-                    for v, c in zip(pos["value_jpy"],
-                                    [(_c * rate if cur == "USD" else _c) for _c, cur in
-                                     zip(pos["cost_native"], pos["currency"])])],
+        "損益(¥)": pos["pl_jpy"],
         "損益%": pos["pl_pct"],
         "通貨": pos["currency"],
     })
@@ -117,6 +122,7 @@ else:
         styled, width="stretch", hide_index=True,
         column_config={
             "取得単価": st.column_config.NumberColumn(format="%.2f"),
+            "取得時¥/$": st.column_config.NumberColumn(format="%.1f"),
             "現在値": st.column_config.NumberColumn(format="%.2f"),
             "評価額(¥)": st.column_config.NumberColumn(format="¥%.0f"),
             "損益(¥)": st.column_config.NumberColumn(format="¥%.0f"),

@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-HOLD_COLS = ["ticker", "shares", "avg_cost"]
+HOLD_COLS = ["ticker", "shares", "avg_cost", "fx_cost"]
 
 
 @st.cache_resource(show_spinner=False)
@@ -49,6 +49,7 @@ def read_holdings() -> pd.DataFrame:
         df["ticker"] = df["ticker"].astype(str).str.strip()
         df["shares"] = pd.to_numeric(df["shares"], errors="coerce")
         df["avg_cost"] = pd.to_numeric(df["avg_cost"], errors="coerce")
+        df["fx_cost"] = pd.to_numeric(df["fx_cost"], errors="coerce")  # 任意（空欄=NaN）
         df = df[df["ticker"] != ""].dropna(subset=["shares", "avg_cost"]).reset_index(drop=True)
     return df
 
@@ -59,7 +60,9 @@ def write_holdings(df: pd.DataFrame) -> None:
         tk = str(r["ticker"]).strip()
         if not tk:
             continue
-        out.append([tk, float(r["shares"]), float(r["avg_cost"])])
+        fx = r.get("fx_cost") if "fx_cost" in df.columns else None
+        fx_val = float(fx) if (fx is not None and not pd.isna(fx)) else ""
+        out.append([tk, float(r["shares"]), float(r["avg_cost"]), fx_val])
     ws = _ws("holdings", HOLD_COLS)
     ws.clear()
     ws.update(out)
