@@ -11,7 +11,8 @@ def fetch_quotes(tickers: tuple) -> dict:
     for tk in tickers:
         try:
             fi = yf.Ticker(tk).fast_info
-            price = fi.get("last_price")
+            # fast_info の .get() はキャメルケースキー（lastPrice）
+            price = fi.get("lastPrice") or fi.get("last_price")
             cur = fi.get("currency")
             if price:
                 out[tk] = {"price": float(price),
