@@ -4,12 +4,13 @@ import sys, os as _os
 _here = _os.path.dirname(_os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
+import datetime as _dt
 import pandas as pd
 import streamlit as st
 
-from lib.common import usdjpy_rate, disp_name, fmt, US_NAME_JP
+from lib.common import usdjpy_rate, resolve_name, quote_ticker
 from lib.portfolio import compute_positions, summarize
-from lib import store, prices
+from lib import store, prices, cash as cashlib
 
 st.markdown("### :material/account_balance_wallet: マイポートフォリオ")
 
@@ -34,17 +35,31 @@ if not _gate():
 
 # ---- データ読み込み ----
 try:
-    banks = store.read_banks()
+    ledger = store.read_cash_ledger()
     holdings = store.read_holdings()
 except Exception as e:
     st.error(f"データの読み込みに失敗しました: {e}")
     st.stop()
 
-cash = float(pd.to_numeric(banks["amount_jpy"], errors="coerce").sum()) if not banks.empty else 0.0
+cash = cashlib.total_cash(ledger)
 rate = usdjpy_rate()
-quotes = prices.fetch_quotes(tuple(holdings["ticker"])) if not holdings.empty else {}
+
+# 価格: 投資信託は連動ETFに置換して取得し、元のtickerキーに戻す
+tks = list(holdings["ticker"]) if not holdings.empty else []
+qmap = {tk: quote_ticker(tk) for tk in tks}
+raw = prices.fetch_quotes(tuple(sorted(set(qmap.values())))) if tks else {}
+quotes = {tk: raw.get(qmap[tk]) for tk in tks}
 pos = compute_positions(holdings, quotes, rate)
 s = summarize(pos, cash, rate)
+
+# 銘柄名: ファンド名/対象銘柄名/既知名で解決、未解決はYahooの名称で補完
+names = {tk: resolve_name(tk) for tk in tks}
+unknown = [tk for tk in tks if names.get(tk) == tk]
+if unknown:
+    yn = prices.fetch_names(tuple(unknown))
+    for tk in unknown:
+        if yn.get(tk):
+            names[tk] = yn[tk]
 
 # ---- サマリー ----
 def _yen(v):
@@ -58,34 +73,47 @@ c[3].metric(":material/show_chart: 株式評価額", _yen(s["stock_jpy"]))
 
 st.divider()
 
-# ---- 預金（銀行ごと）----
-st.markdown("#### :material/savings: 預金（銀行ごと）")
-st.caption("銀行を行ごとに追加できます。合計が上の「現預金」になります。")
+# ---- 預金（銀行ごと・日付つき台帳）----
+st.markdown("#### :material/savings: 預金（銀行ごと・履歴）")
+st.caption("1行 = ある日付のその銀行の残高。日付を変えて追加すると履歴になります。"
+           "現在の預金 = 各銀行の最新日付の残高の合計。")
 bver = st.session_state.setdefault("pf_bank_ver", 0)
-banks_src = banks if not banks.empty else pd.DataFrame(columns=store.CASH_COLS)
-banks_edited = st.data_editor(
-    banks_src,
+if ledger.empty:
+    ledger_src = pd.DataFrame(columns=store.CASH_COLS)
+else:
+    ledger_src = ledger.copy()
+    ledger_src["date"] = pd.to_datetime(ledger_src["date"], errors="coerce")
+ledger_edited = st.data_editor(
+    ledger_src,
     num_rows="dynamic",
     width="stretch",
     column_config={
+        "date": st.column_config.DateColumn("日付", default=_dt.date.today(), format="YYYY-MM-DD"),
         "bank": st.column_config.TextColumn("銀行", required=True),
         "amount_jpy": st.column_config.NumberColumn("残高(円)", min_value=0.0, format="¥%.0f"),
     },
+    column_order=["date", "bank", "amount_jpy"],
     key=f"pf_bank_{bver}",
 )
-bank_total = float(pd.to_numeric(banks_edited["amount_jpy"], errors="coerce").sum()) if not banks_edited.empty else 0.0
-st.caption(f"預金合計: ¥{bank_total:,.0f}")
+st.caption(f"現在の預金合計（各銀行の最新）: ¥{cashlib.total_cash(ledger_edited):,.0f}")
 if st.button("預金を保存", type="primary", icon=":material/save:"):
-    store.write_banks(banks_edited)
+    store.write_cash_ledger(ledger_edited)
     st.session_state["pf_bank_ver"] = bver + 1
     st.success("保存しました。")
     st.rerun()
+
+# 総預金の推移チャート
+hist = cashlib.cash_history(ledger)
+if len(hist) >= 2:
+    st.caption("総預金の推移")
+    st.line_chart(hist, color="#18181b", height=240)
 
 st.divider()
 
 # ---- 保有株の編集 ----
 st.markdown("#### :material/edit_note: 保有株を編集")
-st.caption("行の追加・編集・削除ができます。米国株は『取得時¥/$』に買った時の1ドル=円を入れると損益が正確になります（空欄なら現在レート）。")
+st.caption("行の追加・編集・削除ができます。米国株は『取得時¥/$』に買った時の1ドル=円を入れると損益が正確に（空欄なら現在レート）。"
+           "投資信託は ticker 欄に 楽天VTI / S&P500 / オルカン / ナスダック と入力すると連動ETFで概算します。")
 ver = st.session_state.setdefault("pf_editor_ver", 0)
 src = holdings if not holdings.empty else pd.DataFrame(columns=store.HOLD_COLS)
 edited = st.data_editor(
@@ -117,7 +145,8 @@ if pos.empty:
     st.info("保有株がありません。上で追加してください。", icon=":material/info:")
 else:
     view = pd.DataFrame({
-        "銘柄": [disp_name(t, t, "US" if not t.endswith(".T") else "JP") for t in pos["ticker"]],
+        "コード": list(pos["ticker"]),
+        "銘柄名": [names.get(t, t) for t in pos["ticker"]],
         "株数": pos["shares"],
         "取得単価": pos["avg_cost"],
         "取得時¥/$": pos["fx_cost"],

@@ -4,8 +4,9 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from lib.cash import CASH_COLS  # ["date", "bank", "amount_jpy"]
+
 HOLD_COLS = ["ticker", "shares", "avg_cost", "fx_cost"]
-CASH_COLS = ["bank", "amount_jpy"]
 
 
 @st.cache_resource(show_spinner=False)
@@ -29,24 +30,30 @@ def _ws(name: str, headers: list):
         return ws
 
 
-def read_banks() -> pd.DataFrame:
-    """銀行ごとの預金（bank, amount_jpy）。合計が現預金になる。"""
+def read_cash_ledger() -> pd.DataFrame:
+    """預金台帳（date, bank, amount_jpy）。1行=ある日付のその銀行の残高。"""
     recs = _ws("cash", CASH_COLS).get_all_records()
     df = pd.DataFrame(recs, columns=CASH_COLS)
     if not df.empty:
+        df["date"] = df["date"].astype(str).str.strip()
         df["bank"] = df["bank"].astype(str).str.strip()
         df["amount_jpy"] = pd.to_numeric(df["amount_jpy"], errors="coerce")
-        df = df[~df["bank"].isin(["", "nan", "None", "NaN"])].dropna(subset=["amount_jpy"]).reset_index(drop=True)
+        df = df[~df["bank"].isin(["", "nan", "None", "NaN"])].reset_index(drop=True)
     return df
 
 
-def write_banks(df: pd.DataFrame) -> None:
+def write_cash_ledger(df: pd.DataFrame) -> None:
     out = [CASH_COLS]
     for _, r in df.iterrows():
         bank = str(r["bank"]).strip()
         if not bank:
             continue
-        out.append([bank, float(r["amount_jpy"])])
+        d = r.get("date")
+        # 日付を YYYY-MM-DD 文字列に
+        date_str = "" if (d is None or pd.isna(d)) else str(pd.to_datetime(d).date())
+        amt = r.get("amount_jpy")
+        amt_val = float(amt) if (amt is not None and not pd.isna(amt)) else 0.0
+        out.append([date_str, bank, amt_val])
     ws = _ws("cash", CASH_COLS)
     ws.clear()
     ws.update(out)

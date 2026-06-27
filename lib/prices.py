@@ -22,3 +22,17 @@ def fetch_quotes(tickers: tuple) -> dict:
         except Exception:
             out[tk] = None
     return out
+
+
+@st.cache_data(ttl=60 * 60, show_spinner=False)
+def fetch_names(tickers: tuple) -> dict:
+    """対象外ティッカーの社名フォールバック（Yahooの短い名称）。取得不可は None。"""
+    import yfinance as yf
+    out = {}
+    for tk in tickers:
+        try:
+            info = yf.Ticker(tk).get_info()
+            out[tk] = info.get("shortName") or info.get("longName")
+        except Exception:
+            out[tk] = None
+    return out

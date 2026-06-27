@@ -233,3 +233,60 @@ def compact(v) -> str:
         if abs(v) >= d:
             return f"{v / d:.1f}{unit}"
     return f"{v:.0f}"
+
+
+# ---------------- 投資信託エイリアス（連動ETFで概算） ----------------
+# 入力ティッカー(別名) -> (価格取得に使う連動ETF, 表示名)
+FUND_ALIAS = {
+    "楽天VTI": ("VTI", "楽天VTI（≈VTI）"),
+    "VTI投信": ("VTI", "楽天VTI（≈VTI）"),
+    "SP500": ("VOO", "S&P500投信（≈VOO）"),
+    "S&P500": ("VOO", "S&P500投信（≈VOO）"),
+    "オルカン": ("ACWI", "オルカン（≈ACWI）"),
+    "全世界": ("ACWI", "オルカン（≈ACWI）"),
+    "ナスダック": ("QQQ", "NASDAQ100（≈QQQ）"),
+    "NASDAQ100": ("QQQ", "NASDAQ100（≈QQQ）"),
+}
+
+
+def _norm_alias(s) -> str:
+    return str(s).strip().upper().replace(" ", "").replace("　", "")
+
+
+_FUND_LOOKUP = {_norm_alias(k): v for k, v in FUND_ALIAS.items()}
+
+
+def fund_info(ticker):
+    """ファンド別名なら (連動ETF, 表示名)、違えば None。"""
+    return _FUND_LOOKUP.get(_norm_alias(ticker))
+
+
+def quote_ticker(ticker: str) -> str:
+    """価格取得に使うティッカー（ファンドは連動ETFに置換）。"""
+    fi = fund_info(ticker)
+    return fi[0] if fi else str(ticker).strip()
+
+
+@st.cache_data(ttl=60 * 30)
+def ticker_name_map() -> dict:
+    """スクリーニング対象(225/500)の ticker -> 表示名（JP=日本語 / US=カタカナ優先）。"""
+    df = load_data()
+    out = {}
+    for _, r in df.iterrows():
+        if r["market"] == "US":
+            out[r["ticker"]] = US_NAME_JP.get(r["ticker"], r["name"])
+        else:
+            out[r["ticker"]] = r["name"]
+    return out
+
+
+def resolve_name(ticker: str) -> str:
+    """銘柄名を解決: ファンド名 → 対象銘柄名 → 既知カタカナ → ティッカーそのまま。"""
+    tk = str(ticker).strip()
+    fi = fund_info(tk)
+    if fi:
+        return fi[1]
+    nm = ticker_name_map().get(tk)
+    if nm:
+        return nm
+    return US_NAME_JP.get(tk, tk)

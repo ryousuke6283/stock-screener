@@ -10,19 +10,21 @@ def _fake_modules():
     import sys, types
     store = types.ModuleType("lib.store")
     store.HOLD_COLS = ["ticker", "shares", "avg_cost", "fx_cost"]
-    store.CASH_COLS = ["bank", "amount_jpy"]
-    store.read_banks = lambda: pd.DataFrame(
-        [{"bank": "A銀行", "amount_jpy": 300000.0},
-         {"bank": "B銀行", "amount_jpy": 200000.0}])
-    store.write_banks = lambda df: None
+    store.CASH_COLS = ["date", "bank", "amount_jpy"]
+    store.read_cash_ledger = lambda: pd.DataFrame(
+        [{"date": "2026-06-01", "bank": "A銀行", "amount_jpy": 300000.0},
+         {"date": "2026-06-01", "bank": "B銀行", "amount_jpy": 200000.0}])
+    store.write_cash_ledger = lambda df: None
     store.read_holdings = lambda: pd.DataFrame(
         [{"ticker": "7203.T", "shares": 100, "avg_cost": 2000.0, "fx_cost": None},
-         {"ticker": "AAPL", "shares": 10, "avg_cost": 150.0, "fx_cost": 145.0}])
+         {"ticker": "楽天VTI", "shares": 10, "avg_cost": 250.0, "fx_cost": 145.0}])
     store.write_holdings = lambda df: None
     prices = types.ModuleType("lib.prices")
+    # 楽天VTI は連動ETF VTI に置換されて問い合わされる
     prices.fetch_quotes = lambda tks: {
         "7203.T": {"price": 2850.0, "currency": "JPY"},
-        "AAPL": {"price": 200.0, "currency": "USD"}}
+        "VTI": {"price": 280.0, "currency": "USD"}}
+    prices.fetch_names = lambda tks: {}
     sys.modules["lib.store"] = store
     sys.modules["lib.prices"] = prices
 
