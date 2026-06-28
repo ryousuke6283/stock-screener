@@ -5,10 +5,15 @@ from streamlit.testing.v1 import AppTest
 at = AppTest.from_file("pages_screener.py", default_timeout=60).run()
 assert not at.exception, f"起動時に例外: {at.exception}"
 
-# 初期状態（条件なし）の件数を取得
+# 初期状態（条件なし）の件数を取得（日経225+S&P500+投信）
 total = int(at.metric[0].value.split()[0])
 print(f"初期（条件なし）該当: {total} 件")
-assert total == 726, f"初期件数が想定外: {total}"
+assert total >= 726, f"初期件数が想定外: {total}"
+
+# 投信(連動ETF)が一覧に含まれている（メトリクス4列目=投信の件数）
+fund_n = int(at.metric[3].value)
+print(f"投信: {fund_n} 本")
+assert fund_n >= 4, f"投信が一覧に出ていない: {fund_n}"
 
 # 「バリュー（割安）」プリセットボタンを押す
 btn = next(b for b in at.button if b.label == "バリュー（割安）")

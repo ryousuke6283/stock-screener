@@ -725,3 +725,7 @@ YUM,Yum! Brands,Consumer Discretionary,US,S&P500
 ZBRA,Zebra Technologies,Information Technology,US,S&P500
 ZBH,Zimmer Biomet,Health Care,US,S&P500
 ZTS,Zoetis,Health Care,US,S&P500
+VOO,S&P500（VOO）,インデックス投信,FUND,投信
+VTI,全米株式（楽天VTI≈VTI）,インデックス投信,FUND,投信
+ACWI,全世界株式（オルカン≈ACWI）,インデックス投信,FUND,投信
+QQQ,NASDAQ100（QQQ）,インデックス投信,FUND,投信

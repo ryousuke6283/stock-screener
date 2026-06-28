@@ -210,9 +210,9 @@ def load_data() -> pd.DataFrame:
     df["rev_growth_pct"] = df["revenue_growth"] * 100
     df["earn_growth_pct"] = df["earnings_growth"] * 100
     df["sector_jp"] = df["sector"].map(SECTOR_JP).fillna(df["sector"])
-    # 時価総額をUSDに統一（日本株は円→ドル換算）して日米を同じ土俵で比較
+    # 時価総額をUSDに統一（日本株のみ円→ドル換算。米国株・投信ETFはUSDなのでそのまま）
     rate = usdjpy_rate()
-    df["market_cap_usd"] = df["market_cap"].where(df["market"].eq("US"), df["market_cap"] / rate)
+    df["market_cap_usd"] = df["market_cap"].where(~df["market"].eq("JP"), df["market_cap"] / rate)
     return df
 
 
