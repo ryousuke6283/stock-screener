@@ -5,9 +5,29 @@ from lib.common import (
     SECTOR_JP, US_NAME_JP, LOGO_SVG, usdjpy_rate, load_data,
     disp_name, fmt, compact,
 )
+from lib import store, watch as watchlib
 
 df = load_data()
 fetched = pd.to_datetime(df["fetched_at"].iloc[0]).tz_convert("Asia/Tokyo")
+
+
+# ---------------- ウォッチリスト（Google Sheets保存・失敗時は機能オフ）----------------
+@st.cache_data(ttl=120, show_spinner=False)
+def _load_watch():
+    """ウォッチを読み込む。Secrets未設定/取得失敗なら (空df, False)=機能オフ。"""
+    try:
+        return store.read_watch(), True
+    except Exception:
+        return pd.DataFrame(columns=watchlib.WATCH_COLS), False
+
+
+def _save_watch(new_df: pd.DataFrame) -> None:
+    store.write_watch(new_df)
+    _load_watch.clear()   # 次のrunで最新を読む
+
+
+watch_df, watch_enabled = _load_watch()
+watched = set(watch_df["ticker"]) if not watch_df.empty else set()
 
 
 @st.cache_data(ttl=60 * 60, show_spinner=False)
@@ -136,6 +156,73 @@ def render_detail(row: pd.Series) -> None:
     else:
         st.caption("この期間の株価データは取得できませんでした。")
 
+
+def render_watch_panel(watch_df: pd.DataFrame, data_df: pd.DataFrame, enabled: bool) -> None:
+    """一覧の最上部のウォッチリスト（先頭表示・到達アラート・編集）。"""
+    st.markdown("#### :material/star: ウォッチリスト")
+    if not enabled:
+        st.caption("ウォッチ機能は現在利用できません（保存先が未設定）。")
+        return
+
+    wv = watchlib.build_watch_view(watch_df, data_df)
+    if wv.empty:
+        st.caption("ウォッチ銘柄はまだありません。下の一覧で銘柄を選び「★ ウォッチに追加」を押すと、ここに表示されます。")
+    else:
+        reached = list(wv["reached"])
+        disp = pd.DataFrame({
+            "状態": ["買い時" if r else ("—" if pd.isna(t) else "監視中")
+                    for r, t in zip(reached, wv["target_price"])],
+            "銘柄": [disp_name(tk, nm, mk) for tk, nm, mk in zip(wv["ticker"], wv["name"], wv["market"])],
+            "市場": wv["market"].map({"JP": "日本", "US": "米国"}).fillna(""),
+            "現在値": wv["price"],
+            "目標買値": wv["target_price"],
+            "あと%": wv["gap_pct"],
+            "メモ": wv["memo"],
+            "通貨": wv["currency"],
+        })
+
+        def _tint(row):
+            return ["background-color:#dcfce7" if reached[row.name] else ""] * len(row)
+
+        styled = disp.style.apply(_tint, axis=1)
+        st.dataframe(
+            styled, width="stretch", hide_index=True,
+            column_config={
+                "現在値": st.column_config.NumberColumn(format="%.1f"),
+                "目標買値": st.column_config.NumberColumn(format="%.1f"),
+                "あと%": st.column_config.NumberColumn(
+                    format="%+.1f%%", help="現在値から目標買値まであと何%（マイナス＝すでに目標以下）"),
+            },
+        )
+        n_reached = int(wv["reached"].sum())
+        if n_reached:
+            st.success(f"{n_reached}銘柄が目標買値に到達しています（買い時）。",
+                       icon=":material/notifications_active:")
+
+    # 編集（目標買値・メモ・追加・削除）
+    with st.expander(":material/edit: ウォッチを編集（目標買値・メモ・追加・削除）"):
+        wver = st.session_state.setdefault("watch_ver", 0)
+        src = watch_df if not watch_df.empty else pd.DataFrame(columns=watchlib.WATCH_COLS)
+        edited = st.data_editor(
+            src, num_rows="dynamic", width="stretch",
+            column_config={
+                "ticker": st.column_config.TextColumn(
+                    "ティッカー", required=True,
+                    help="日本株=4桁+.T（例 7203.T）/ 米国株=シンボル（例 AAPL）"),
+                "target_price": st.column_config.NumberColumn(
+                    "目標買値", min_value=0.0,
+                    help="現地通貨（日本株=円 / 米国株=ドル）。空欄なら到達判定なし"),
+                "memo": st.column_config.TextColumn("メモ"),
+            },
+            column_order=["ticker", "target_price", "memo"],
+            key=f"watch_editor_{wver}",
+        )
+        if st.button("ウォッチを保存", type="primary", icon=":material/save:", key="watch_save"):
+            _save_watch(edited)
+            st.session_state["watch_ver"] = wver + 1
+            st.success("保存しました。")
+            st.rerun()
+
 # ---------------- スライダー定義（OFF値＝この端ならフィルタ無効） ----------------
 # (key, ラベル, min, max, step, 種類['max'/'min'], 対象カラム)
 SLIDERS = [
@@ -255,6 +342,10 @@ if active_filters:
 else:
     st.caption("数値条件なし（市場・セクターのみ）")
 
+# ====== ウォッチリスト（一覧の先頭に固定表示・到達アラート）======
+render_watch_panel(watch_df, df, watch_enabled)
+st.divider()
+
 # ====== 一覧（コンパクト）: コード/通貨/PER以降は詳細パネルへ移動 ======
 res = res.assign(
     _disp=[disp_name(t, n, m) for t, n, m in zip(res["ticker"], res["name"], res["market"])]
@@ -278,6 +369,7 @@ MAIN_COLS = {"_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
              "price": "株価", "market_cap_usd": "時価総額($)"}
 view = res[list(MAIN_COLS)].rename(columns=MAIN_COLS)
 view["市場"] = view["市場"].map({"JP": "日本", "US": "米国"}).fillna(view["市場"])
+view.insert(0, "★", ["★" if t in watched else "" for t in res["ticker"]])  # ウォッチ済みを区別
 
 
 def _row_tint(r):
@@ -298,6 +390,7 @@ event = st.dataframe(
     selection_mode="single-row",
     key="result_tbl",
     column_config={
+        "★": st.column_config.TextColumn(width="small", help="ウォッチ登録済み"),
         "株価": st.column_config.NumberColumn(format="%.1f"),
         "時価総額($)": st.column_config.NumberColumn(format="compact"),
     },
@@ -332,6 +425,17 @@ else:
     chosen = None
 
 if chosen is not None:
+    if watch_enabled:                      # 公開スクリーナー上で★追加/解除（保存先=Sheets）
+        is_w = chosen["ticker"] in watched
+        label = "★ ウォッチ解除" if is_w else "★ ウォッチに追加"
+        if st.button(label, key=f"wt_{chosen['ticker']}", icon=":material/star:"):
+            if is_w:
+                new = watch_df[watch_df["ticker"] != chosen["ticker"]]
+            else:
+                add = pd.DataFrame([{"ticker": chosen["ticker"], "target_price": None, "memo": ""}])
+                new = pd.concat([watch_df, add], ignore_index=True)
+            _save_watch(new)
+            st.rerun()
     render_detail(chosen)
 else:
     st.info(

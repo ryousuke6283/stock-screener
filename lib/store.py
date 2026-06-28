@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from lib.cash import CASH_COLS  # ["date", "bank", "amount_jpy"]
+from lib.watch import WATCH_COLS  # ["ticker", "target_price", "memo"]
 
 HOLD_COLS = ["ticker", "shares", "avg_cost", "fx_cost"]
 
@@ -81,5 +82,34 @@ def write_holdings(df: pd.DataFrame) -> None:
         fx_val = float(fx) if (fx is not None and not pd.isna(fx)) else ""
         out.append([tk, float(r["shares"]), float(r["avg_cost"]), fx_val])
     ws = _ws("holdings", HOLD_COLS)
+    ws.clear()
+    ws.update(out)
+
+
+def read_watch() -> pd.DataFrame:
+    """ウォッチリスト（ticker, target_price, memo）。target_price は任意（空欄=NaN）。"""
+    recs = _ws("watch", WATCH_COLS).get_all_records()
+    df = pd.DataFrame(recs, columns=WATCH_COLS)
+    if not df.empty:
+        df["ticker"] = df["ticker"].astype(str).str.strip()
+        df["target_price"] = pd.to_numeric(df["target_price"], errors="coerce")
+        df["memo"] = df["memo"].fillna("").astype(str)
+        df = df[~df["ticker"].isin(["", "nan", "None", "NaN"])].reset_index(drop=True)
+    return df
+
+
+def write_watch(df: pd.DataFrame) -> None:
+    out = [WATCH_COLS]
+    seen = set()
+    for _, r in df.iterrows():
+        tk = str(r["ticker"]).strip()
+        if not tk or tk in seen:   # ticker必須・重複は先勝ちで除去
+            continue
+        seen.add(tk)
+        tp = r.get("target_price")
+        tp_val = float(tp) if (tp is not None and not pd.isna(tp)) else ""
+        memo = "" if r.get("memo") is None or pd.isna(r.get("memo")) else str(r.get("memo")).strip()
+        out.append([tk, tp_val, memo])
+    ws = _ws("watch", WATCH_COLS)
     ws.clear()
     ws.update(out)
