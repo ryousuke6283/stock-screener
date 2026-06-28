@@ -101,7 +101,8 @@ def build_financials_table(inc, cur: str):
 def render_detail(row: pd.Series) -> None:
     name = disp_name(row["ticker"], row["name"], row["market"])
     cur = row.get("currency") or ""
-    market_jp = "日本株" if row["market"] == "JP" else "米国株"
+    market_jp = {"JP": "日本株", "US": "米国株", "FUND": "投信"}.get(row["market"], row["market"])
+    is_fund = row["market"] == "FUND"
     st.divider()
     st.markdown(
         f"### {name} "
@@ -110,40 +111,54 @@ def render_detail(row: pd.Series) -> None:
     )
 
     # メインから移した指標（PC=4列/スマホ=2列のグリッドで間延び防止）
-    items = [
-        ("株価", f"{fmt(row['price'], 1)} {cur}", ""),
-        ("時価総額", f"${compact(row['market_cap_usd'])}", f"現地通貨 {compact(row['market_cap'])} {cur}"),
-        ("PER", fmt(row["per"], 1), ""),
-        ("PBR", fmt(row["pbr"], 2), ""),
-        ("配当利回り", fmt(row["dividend_yield"], 2, "%"), ""),
-        ("ROE", fmt(row["roe_pct"], 1, "%"), ""),
-        ("増収率", fmt(row["rev_growth_pct"], 1, "%"), ""),
-        ("増益率", fmt(row["earn_growth_pct"], 1, "%"), ""),
-        ("PSR", fmt(row["psr"], 2), ""),
-        ("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"), ""),
-        ("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"), ""),
-        ("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"), ""),
-    ]
+    if is_fund:
+        # 投信(ETF)はPER/PBR等が無いので、価格・純資産・経費率・モメンタムを表示
+        items = [
+            ("基準価格", f"{fmt(row['price'], 1)} {cur}", ""),
+            ("純資産", f"${compact(row['market_cap_usd'])}", f"{compact(row['market_cap'])} {cur}"),
+            ("経費率", fmt(row.get("expense_ratio"), 2, "%"), "年率の信託報酬(連動ETFの経費率)"),
+            ("配当利回り", fmt(row["dividend_yield"], 2, "%"), ""),
+            ("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"), ""),
+            ("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"), ""),
+            ("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"), ""),
+            ("ベータ", fmt(row.get("beta"), 2), ""),
+        ]
+    else:
+        items = [
+            ("株価", f"{fmt(row['price'], 1)} {cur}", ""),
+            ("時価総額", f"${compact(row['market_cap_usd'])}", f"現地通貨 {compact(row['market_cap'])} {cur}"),
+            ("PER", fmt(row["per"], 1), ""),
+            ("PBR", fmt(row["pbr"], 2), ""),
+            ("配当利回り", fmt(row["dividend_yield"], 2, "%"), ""),
+            ("ROE", fmt(row["roe_pct"], 1, "%"), ""),
+            ("増収率", fmt(row["rev_growth_pct"], 1, "%"), ""),
+            ("増益率", fmt(row["earn_growth_pct"], 1, "%"), ""),
+            ("PSR", fmt(row["psr"], 2), ""),
+            ("50日線乖離", fmt(row["pct_vs_ma50"], 1, "%"), ""),
+            ("200日線乖離", fmt(row["pct_vs_ma200"], 1, "%"), ""),
+            ("52週高値比", fmt(row["pct_from_52w_high"], 1, "%"), ""),
+        ]
     parts = []
     for label, val, tip in items:
         t = f' title="{tip}"' if tip else ""
         parts.append(f'<div class="m"{t}><div class="m-l">{label}</div><div class="m-v">{val}</div></div>')
     st.markdown(f'<div class="metric-grid">{"".join(parts)}</div>', unsafe_allow_html=True)
 
-    # 財務（年次） — グラフはモノトーン＆幅を左寄せで制限（PCで間延びさせない）
-    with st.spinner("財務データを取得中…"):
-        inc = fetch_income(row["ticker"])
-    st.markdown("#### 財務（年次・数年分）")
-    fin = build_financials_table(inc, cur)
-    if fin is not None and not fin.empty:
-        st.dataframe(fin, width="stretch")
-        money_cols = [c for c in fin.columns if c.startswith(("売上高", "営業利益", "純利益"))]
-        if money_cols:
-            colors = [_BAR_GRAY[next(k for k in _BAR_GRAY if c.startswith(k))] for c in money_cols]
-            with st.columns([3, 2])[0]:
-                st.bar_chart(fin[money_cols], color=colors, height=260)
-    else:
-        st.caption("この銘柄の財務データは取得できませんでした。")
+    # 財務（年次）— 投信(ETF)は損益計算書が無いのでスキップ
+    if not is_fund:
+        with st.spinner("財務データを取得中…"):
+            inc = fetch_income(row["ticker"])
+        st.markdown("#### 財務（年次・数年分）")
+        fin = build_financials_table(inc, cur)
+        if fin is not None and not fin.empty:
+            st.dataframe(fin, width="stretch")
+            money_cols = [c for c in fin.columns if c.startswith(("売上高", "営業利益", "純利益"))]
+            if money_cols:
+                colors = [_BAR_GRAY[next(k for k in _BAR_GRAY if c.startswith(k))] for c in money_cols]
+                with st.columns([3, 2])[0]:
+                    st.bar_chart(fin[money_cols], color=colors, height=260)
+        else:
+            st.caption("この銘柄の財務データは取得できませんでした。")
 
     # 株価チャート（期間切替・モノトーン・"終値"表記）
     st.markdown("#### 株価チャート")
@@ -173,7 +188,7 @@ def render_watch_panel(watch_df: pd.DataFrame, data_df: pd.DataFrame, enabled: b
             "状態": ["買い時" if r else ("—" if pd.isna(t) else "監視中")
                     for r, t in zip(reached, wv["target_price"])],
             "銘柄": [disp_name(tk, nm, mk) for tk, nm, mk in zip(wv["ticker"], wv["name"], wv["market"])],
-            "市場": wv["market"].map({"JP": "日本", "US": "米国"}).fillna(""),
+            "市場": wv["market"].map({"JP": "日本", "US": "米国", "FUND": "投信"}).fillna(""),
             "現在値": wv["price"],
             "目標買値": wv["target_price"],
             "あと%": wv["gap_pct"],
@@ -286,7 +301,7 @@ if st.sidebar.button("条件をリセット", icon=":material/refresh:", width="
 st.sidebar.divider()
 
 # 市場
-market = st.sidebar.radio(":material/public: 市場", ["両方", "日本株", "米国株"], horizontal=True)
+market = st.sidebar.radio(":material/public: 市場", ["両方", "日本株", "米国株", "投信"], horizontal=True)
 
 # セクター（日本語表記）
 sectors = sorted(df["sector_jp"].dropna().unique())
@@ -303,6 +318,8 @@ if market == "日本株":
     mask &= df["market"].eq("JP")
 elif market == "米国株":
     mask &= df["market"].eq("US")
+elif market == "投信":
+    mask &= df["market"].eq("FUND")
 
 if sel_sectors:
     mask &= df["sector_jp"].isin(sel_sectors)
@@ -332,10 +349,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-m1, m2, m3 = st.columns(3)
+m1, m2, m3, m4 = st.columns(4)
 m1.metric(":material/filter_alt: 該当銘柄", f"{len(res)} 件")
 m2.metric(":material/currency_yen: 日本株", int((res['market'] == 'JP').sum()))
 m3.metric(":material/attach_money: 米国株", int((res['market'] == 'US').sum()))
+m4.metric(":material/savings: 投信", int((res['market'] == 'FUND').sum()))
 
 if active_filters:
     st.caption("適用中の数値条件: " + " / ".join(active_filters))
@@ -368,13 +386,13 @@ res = res.sort_values(SORT_COLS[sort_label], ascending=ascending, na_position="l
 MAIN_COLS = {"_disp": "銘柄", "market": "市場", "sector_jp": "セクター",
              "price": "株価", "market_cap_usd": "時価総額($)"}
 view = res[list(MAIN_COLS)].rename(columns=MAIN_COLS)
-view["市場"] = view["市場"].map({"JP": "日本", "US": "米国"}).fillna(view["市場"])
+view["市場"] = view["市場"].map({"JP": "日本", "US": "米国", "FUND": "投信"}).fillna(view["市場"])
 view.insert(0, "★", ["★" if t in watched else "" for t in res["ticker"]])  # ウォッチ済みを区別
 
 
 def _row_tint(r):
-    # 日本=うっすらグレー / 米国=白 でやさしく区別
-    bg = "#f1f2f4" if r["市場"] == "日本" else "#ffffff"
+    # 日本=うっすらグレー / 米国=白 / 投信=淡い青 でやさしく区別
+    bg = {"日本": "#f1f2f4", "投信": "#eef2ff"}.get(r["市場"], "#ffffff")
     return [f"background-color:{bg}"] * len(r)
 
 

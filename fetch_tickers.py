@@ -24,6 +24,19 @@ HERE = Path(__file__).parent
 DB_PATH = HERE / "stocks.db"
 HEADERS = {"User-Agent": "Mozilla/5.0 (screener research)"}
 
+# 主要インデックス投信（連動ETFで概算）。market=FUND として一覧に混ぜる。
+# ポートフォリオの lib.common.FUND_ALIAS と連動先を揃える。
+FUNDS = [
+    {"ticker": "VOO",  "name": "S&P500（VOO）",          "sector": "インデックス投信", "market": "FUND", "index_": "投信"},
+    {"ticker": "VTI",  "name": "全米株式（楽天VTI≈VTI）", "sector": "インデックス投信", "market": "FUND", "index_": "投信"},
+    {"ticker": "ACWI", "name": "全世界株式（オルカン≈ACWI）", "sector": "インデックス投信", "market": "FUND", "index_": "投信"},
+    {"ticker": "QQQ",  "name": "NASDAQ100（QQQ）",       "sector": "インデックス投信", "market": "FUND", "index_": "投信"},
+]
+
+
+def fetch_funds() -> pd.DataFrame:
+    return pd.DataFrame(FUNDS)
+
 
 def get_html(url: str) -> str:
     return requests.get(url, headers=HEADERS, timeout=30).text
@@ -77,7 +90,10 @@ def main():
     nk = fetch_nikkei225()
     print(f"  -> {len(nk)} 銘柄")
 
-    all_df = pd.concat([nk, sp], ignore_index=True)
+    funds = fetch_funds()
+    print(f"投信(連動ETF): {len(funds)} 本")
+
+    all_df = pd.concat([nk, sp, funds], ignore_index=True)
 
     # SQLiteへ保存
     con = sqlite3.connect(DB_PATH)
@@ -89,7 +105,7 @@ def main():
     all_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
     print(f"\n保存完了: {DB_PATH.name} (tickers) / {csv_path.name}")
-    print(f"合計 {len(all_df)} 銘柄  (日経225={len(nk)}, S&P500={len(sp)})")
+    print(f"合計 {len(all_df)} 銘柄  (日経225={len(nk)}, S&P500={len(sp)}, 投信={len(funds)})")
     print("\n--- 日経225 先頭5件 ---")
     print(nk.head().to_string(index=False))
     print("\n--- S&P500 先頭5件 ---")

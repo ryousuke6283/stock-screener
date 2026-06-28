@@ -37,6 +37,7 @@ INFO_FIELDS = {
     "priceToBook": "pbr",
     "priceToSalesTrailing12Months": "psr",
     "dividendYield": "dividend_yield",                   # 単位は % (例 3.51)
+    "netExpenseRatio": "expense_ratio",                  # 投信/ETFの経費率 (% 表記 例 0.03)
     # --- クオリティ ---
     "returnOnEquity": "roe",                             # 小数 (0.10=10%)
     "returnOnAssets": "roa",
@@ -69,7 +70,12 @@ def fetch_one(row: dict, retries: int = 2) -> dict:
             info = yf.Ticker(ticker).info
             for key, col in INFO_FIELDS.items():
                 rec[col] = info.get(key)
-            # CSV側にセクターがあればそれを優先（S&P500）、無ければinfo由来（JP）
+            # ETF/投信は currentPrice/marketCap が None で返るのでフォールバック
+            if rec.get("price") is None:
+                rec["price"] = info.get("regularMarketPrice") or info.get("previousClose")
+            if rec.get("market_cap") is None:
+                rec["market_cap"] = info.get("totalAssets")  # ETFは純資産で代用
+            # CSV側にセクターがあればそれを優先（S&P500/投信）、無ければinfo由来（JP）
             if row.get("sector") and str(row["sector"]).lower() != "nan":
                 rec["sector"] = row["sector"]
             rec["ok"] = rec.get("price") is not None
